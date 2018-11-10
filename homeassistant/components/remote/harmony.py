@@ -4,13 +4,12 @@ Support for Harmony Hub devices.
 For more details about this platform, please refer to the documentation at
 https://home-assistant.io/components/remote.harmony/
 """
-import asyncio
 import logging
 import time
 
 import voluptuous as vol
 
-import homeassistant.components.remote as remote
+from homeassistant.components import remote
 from homeassistant.components.remote import (
     ATTR_ACTIVITY, ATTR_DELAY_SECS, ATTR_DEVICE, ATTR_NUM_REPEATS,
     DEFAULT_DELAY_SECS, DOMAIN, PLATFORM_SCHEMA)
@@ -31,7 +30,7 @@ CONF_DEVICE_CACHE = 'harmony_device_cache'
 SERVICE_SYNC = 'harmony_sync'
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
-    vol.Required(ATTR_ACTIVITY, default=None): cv.string,
+    vol.Optional(ATTR_ACTIVITY): cv.string,
     vol.Required(CONF_NAME): cv.string,
     vol.Optional(ATTR_DELAY_SECS, default=DEFAULT_DELAY_SECS):
         vol.Coerce(float),
@@ -44,7 +43,7 @@ HARMONY_SYNC_SCHEMA = vol.Schema({
 })
 
 
-def setup_platform(hass, config, add_devices, discovery_info=None):
+def setup_platform(hass, config, add_entities, discovery_info=None):
     """Set up the Harmony platform."""
     host = None
     activity = None
@@ -71,7 +70,7 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
             port)
 
         # Ignore hub name when checking if this hub is known - ip and port only
-        if host and host[1:] in (h.host for h in DEVICES):
+        if host[1:] in ((h.host, h.port) for h in DEVICES):
             _LOGGER.debug("Discovered host already known: %s", host)
             return
     elif CONF_HOST in config:
@@ -96,7 +95,7 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
         device = HarmonyRemote(
             name, address, port, activity, harmony_conf_file, delay_secs)
         DEVICES.append(device)
-        add_devices([device])
+        add_entities([device])
         register_services(hass)
     except (ValueError, AttributeError):
         raise PlatformNotReady
@@ -139,7 +138,7 @@ class HarmonyRemote(remote.RemoteDevice):
         _LOGGER.debug("HarmonyRemote device init started for: %s", name)
         self._name = name
         self.host = host
-        self._port = port
+        self.port = port
         self._state = None
         self._current_activity = None
         self._default_activity = activity
@@ -152,8 +151,7 @@ class HarmonyRemote(remote.RemoteDevice):
             pyharmony.ha_write_config_file(self._config, self._config_path)
         self._delay_secs = delay_secs
 
-    @asyncio.coroutine
-    def async_added_to_hass(self):
+    async def async_added_to_hass(self):
         """Complete the initialization."""
         self.hass.bus.async_listen_once(
             EVENT_HOMEASSISTANT_STOP,
